@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 
 class Country:
-    def __init__(self, name):
+    def __init__(self, name, code):
         self.name = name
+        self.code = code
 
 class City:
     def __init__(self, name, country):
