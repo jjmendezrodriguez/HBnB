@@ -12,7 +12,7 @@ preloaded_countries = [
     Country(name="United States", code="US"),
     Country(name="Canada", code="CA"),
     Country(name="Mexico", code="MX"),
-    # Add more countries as needed
+# Add more countries as needed
 ]
 
 for country in preloaded_countries:
@@ -105,5 +105,104 @@ def delete_city(city_id):
     data_manager.delete(city_id, 'City')
     return '', 204
 
+# User Management Endpoints
+users = {}
+user_id_counter = 1
+
+def is_valid_email(email):
+    regex = r'^\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    return re.match(regex, email) is not None
+
+def find_user_by_email(email):
+    return next((user for user in users.values() if user['email'] == email), None)
+
+@app.route('/users', methods=['POST'])
+def create_user():
+    global user_id_counter
+    
+    data = request.get_json()
+    email = data.get('email')
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    
+    # Validate input
+    if not email or not is_valid_email(email):
+        return jsonify({"error": "Invalid or missing email"}), 400
+    if not first_name or not isinstance(first_name, str):
+        return jsonify({"error": "Invalid or missing first name"}), 400
+    if not last_name or not isinstance(last_name, str):
+        return jsonify({"error": "Invalid or missing last name"}), 400
+    
+    # Check for unique email
+    if find_user_by_email(email):
+        return jsonify({"error": "Email already exists"}), 409
+
+    user = {
+        "id": user_id_counter,
+        "email": email,
+        "first_name": first_name,
+        "last_name": last_name,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    
+    users[user_id_counter] = user
+    user_id_counter += 1
+    
+    return jsonify(user), 201
+
+@app.route('/users', methods=['GET'])
+def get_users():
+    return jsonify(list(users.values())), 200
+
+@app.route('/users/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    user = users.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify(user), 200
+
+@app.route('/users/<int:user_id>', methods=['PUT'])
+def update_user(user_id):
+    user = users.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    data = request.get_json()
+    email = data.get('email')
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    
+    # Validate input
+    if email and not is_valid_email(email):
+        return jsonify({"error": "Invalid email"}), 400
+    if first_name and not isinstance(first_name, str):
+        return jsonify({"error": "Invalid first name"}), 400
+    if last_name and not isinstance(last_name, str):
+        return jsonify({"error": "Invalid last name"}), 400
+    
+    # Check for unique email if changed
+    if email and email != user['email'] and find_user_by_email(email):
+        return jsonify({"error": "Email already exists"}), 409
+    
+    # Update user fields
+    if email:
+        user['email'] = email
+    if first_name:
+        user['first_name'] = first_name
+    if last_name:
+        user['last_name'] = last_name
+    user['updated_at'] = datetime.utcnow().isoformat()
+    
+    return jsonify(user), 200
+
+@app.route('/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    user = users.pop(user_id, None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return '', 204
+
 if __name__ == "__main__":
     app.run(debug=True)
+
