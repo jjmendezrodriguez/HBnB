@@ -1,5 +1,6 @@
 import json
 from .i_persistence_manager import IPersistenceManager
+from models.location import Country
 
 class DataManager(IPersistenceManager):
     def __init__(self):
@@ -10,8 +11,13 @@ class DataManager(IPersistenceManager):
         entity_type = type(entity).__name__
         if entity_type not in self.storage:
             self.storage[entity_type] = {}
-        self.storage[entity_type][entity.id] = entity
-        self._save_to_file()
+        if hasattr(entity, 'id'):
+            entity_id = entity.id
+        else:
+            entity_id = len(self.storage[entity_type]) + 1
+            setattr(entity, 'id', entity_id)
+            self.storage[entity_type][entity_id] = entity
+            self._save_to_file()
 
     def get(self, entity_id, entity_type):
         return self.storage.get(entity_type, {}).get(entity_id)
