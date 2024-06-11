@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from persistence.data_manager import DataManager
+from persistence import IPersistenceManager, DataManager, FileStorage
 from models import Amenity, Country, City, Place, Review, User
 from datetime import datetime
 import re
