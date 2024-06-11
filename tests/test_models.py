@@ -15,14 +15,14 @@ class TestModels(unittest.TestCase):
         self.assertEqual(user.email, "test@example.com")
 
     def test_place_creation(self):
-        city = City(name="New York", country=Country(name="USA"))
+        city = City(name="New York", country=Country(name="USA", code="US"))
         place = Place(name="Test Place", description="A place to test", address="123 Test St", city=city, latitude=40.7128, longitude=-74.0060, number_of_rooms=2, bathrooms=1, price_per_night=100, max_guests=4)
         self.assertIsNotNone(place.id)
         self.assertEqual(place.city.name, "New York")
 
     def test_review_creation(self):
         user = User(email="test@example.com", password="password", first_name="John", last_name="Doe")
-        place = Place(name="Test Place", description="A place to test", address="123 Test St", city=City(name="New York", country=Country(name="USA")), latitude=40.7128, longitude=-74.0060, number_of_rooms=2, bathrooms=1, price_per_night=100, max_guests=4)
+        place = Place(name="Test Place", description="A place to test", address="123 Test St", city=City(name="New York", country=Country(name="USA", code="US")), latitude=40.7128, longitude=-74.0060, number_of_rooms=2, bathrooms=1, price_per_night=100, max_guests=4)
         review = Review(rating=5, comment="Great place!", place=place, user=user)
         self.assertIsNotNone(review.id)
         self.assertEqual(review.rating, 5)
