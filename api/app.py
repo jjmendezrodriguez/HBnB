@@ -1,9 +1,6 @@
 from flask import Flask, request, jsonify
 from persistence.data_manager import DataManager
-from models.location import Country, City
-from models.amenity import Amenity
-from models.user import User
-from models.review import Review
+from models import Amenity, Country, City, Place, Review, User
 from datetime import datetime
 import re
 import logging
@@ -11,7 +8,10 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
+# Initialize Flask app
 app = Flask(__name__)
+
+# Initialize DataManager for persistence
 data_manager = DataManager()
 
 # Pre-loaded country data
@@ -22,26 +22,42 @@ preloaded_countries = [
     # Add more countries as needed
 ]
 
+# Save pre-loaded countries to data manager
 for country in preloaded_countries:
     data_manager.save(country)
 
 # Utility functions
 def is_valid_country_code(code):
+    """
+    Check if a country code is valid.
+    """
     return any(country.code == code for country in preloaded_countries)
 
 def is_non_empty_string(s):
+    """
+    Check if a string is non-empty and not just whitespace.
+    """
     return isinstance(s, str) and bool(s.strip())
 
 def is_valid_email(email):
+    """
+    Check if an email is valid using regex.
+    """
     regex = r'^\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     return re.match(regex, email) is not None
 
 def is_valid_rating(rating):
+    """
+    Check if a rating is an integer between 1 and 5.
+    """
     return isinstance(rating, int) and 1 <= rating <= 5
 
 # Custom JSON encoder for complex objects
 class CustomJSONEncoder():
     def default(self, obj):
+        """
+        Custom JSON serialization for complex objects.
+        """
         if isinstance(obj, Country):
             return {"name": obj.name, "code": obj.code}
         if isinstance(obj, City):
@@ -59,383 +75,326 @@ app.json_encoder = CustomJSONEncoder
 # Country and City Endpoints
 @app.route('/countries', methods=['GET'])
 def get_countries():
-    countries = [country for country in preloaded_countries]
+    """
+    Retrieve all pre-loaded countries.
+    """
+    countries = data_manager.storage.get('Country', [])
     return jsonify(countries), 200
 
 @app.route('/countries/<country_code>', methods=['GET'])
 def get_country(country_code):
-    country = next((c for c in preloaded_countries if c.code == country_code), None)
-    if not country:
-        return jsonify({'error': 'Country not found'}), 404
-    return jsonify(country), 200
+    """
+    Retrieve details of a specific country by its code.
+    """
+    country = data_manager.get(country_code, 'Country')
+    if country:
+        return jsonify(country), 200
+    else:
+        return jsonify({"error": "Country not found"}), 404
 
 @app.route('/countries/<country_code>/cities', methods=['GET'])
 def get_cities_by_country(country_code):
-    if not is_valid_country_code(country_code):
-        return jsonify({'error': 'Invalid country code'}), 400
-    cities = [city for city in data_manager.storage.get('City', {}).values() if city.country.code == country_code]
-    return jsonify(cities), 200
+    """
+    Retrieve all cities belonging to a specific country.
+    """
+    country = data_manager.get(country_code, 'Country')
+    if country:
+        cities = [city for city in data_manager.storage.get('City', []) if city['country_code'] == country_code]
+        return jsonify(cities), 200
+    else:
+        return jsonify({"error": "Country not found"}), 404
 
+# City endpoints
 @app.route('/cities', methods=['POST'])
 def create_city():
-    try:
-        data = request.get_json()
-        name = data.get('name')
-        country_code = data.get('country_code')
-
-        if not (is_non_empty_string(name) and is_valid_country_code(country_code)):
-            return jsonify({'error': 'Invalid input data'}), 400
-
-        if any(city.name == name and city.country.code == country_code for city in data_manager.storage.get('City', {}).values()):
-            return jsonify({'error': 'City name already exists in the specified country'}), 409
-
-        country = next(c for c in preloaded_countries if c.code == country_code)
-        city = City(name=name, country=country)
-        data_manager.save(city)
-        return jsonify(city), 201
-    except Exception as e:
-        logging.exception("Error creating city")
-        return jsonify({'error': str(e)}), 500
+    """
+    Create a new city.
+    """
+    data = request.json
+    city = City(id=data['id'], name=data['name'], country_code=data['country_code'])
+    data_manager.save(city)
+    return jsonify(city), 201
 
 @app.route('/cities', methods=['GET'])
 def get_cities():
-    cities = [city for city in data_manager.storage.get('City', {}).values()]
+    """
+    Retrieve all cities.
+    """
+    cities = data_manager.storage.get('City', [])
     return jsonify(cities), 200
 
 @app.route('/cities/<city_id>', methods=['GET'])
 def get_city(city_id):
-    try:
-        city = data_manager.get(city_id, 'City')
-        if not city:
-            return jsonify({'error': 'City not found'}), 404
+    """
+    Retrieve details of a specific city.
+    """
+    city = data_manager.get(city_id, 'City')
+    if city:
         return jsonify(city), 200
-    except Exception as e:
-        logging.exception("Error getting city")
-        return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({"error": "City not found"}), 404
 
 @app.route('/cities/<city_id>', methods=['PUT'])
 def update_city(city_id):
-    try:
-        data = request.get_json()
-        city = data_manager.get(city_id, 'City')
-        if not city:
-            return jsonify({'error': 'City not found'}), 404
-
-        name = data.get('name')
-        country_code = data.get('country_code')
-
-        if not (is_non_empty_string(name) and is_valid_country_code(country_code)):
-            return jsonify({'error': 'Invalid input data'}), 400
-
-        if any(c.name == name and c.country.code == country_code and c.id != city_id for c in data_manager.storage.get('City', {}).values()):
-            return jsonify({'error': 'City name already exists in the specified country'}), 409
-
-        country = next(c for c in preloaded_countries if c.code == country_code)
-        city.name = name
-        city.country = country
-        city.updated_at = datetime.now()
+    """
+    Update an existing city's information.
+    """
+    data = request.json
+    city = data_manager.get(city_id, 'City')
+    if city:
+        for key, value in data.items():
+            setattr(city, key, value)
         data_manager.update(city)
         return jsonify(city), 200
-    except Exception as e:
-        logging.exception("Error updating city")
-        return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({"error": "City not found"}), 404
 
 @app.route('/cities/<city_id>', methods=['DELETE'])
 def delete_city(city_id):
+    """
+    Delete a specific city.
+    """
     try:
-        city = data_manager.get(city_id, 'City')
-        if not city:
-            return jsonify({'error': 'City not found'}), 404
-
         data_manager.delete(city_id, 'City')
         return '', 204
-    except Exception as e:
-        logging.exception("Error deleting city")
-        return jsonify({'error': str(e)}), 500
+    except ValueError:
+        return jsonify({"error": "City not found"}), 404
 
-# User Management Endpoints
-@app.route('/users', methods=['POST'])
-def create_user():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        first_name = data.get('first_name')
-        last_name = data.get('last_name')
-        password = data.get('password')  # Add password to the user creation
-
-        if not email or not is_valid_email(email):
-            return jsonify({"error": "Invalid or missing email"}), 400
-        if not first_name or not isinstance(first_name, str):
-            return jsonify({"error": "Invalid or missing first name"}), 400
-        if not last_name or not isinstance(last_name, str):
-            return jsonify({"error": "Invalid or missing last name"}), 400
-        if not password or not isinstance(password, str):  # Validate password
-            return jsonify({"error": "Invalid or missing password"}), 400
-
-        existing_user = next((user for user in data_manager.storage.get('User', {}).values() if user.email == email), None)
-        if existing_user:
-            return jsonify({"error": "Email already exists"}), 409
-
-        user = User(email=email, first_name=first_name, last_name=last_name, password=password)  # Include password
-        data_manager.save(user)
-        return jsonify(user), 201
-    except Exception as e:
-        logging.exception("Error creating user")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/users', methods=['GET'])
-def get_users():
-    try:
-        users = [user for user in data_manager.storage.get('User', {}).values()]
-        return jsonify(users), 200
-    except Exception as e:
-        logging.exception("Error getting users")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/users/<user_id>', methods=['GET'])
-def get_user(user_id):
-    try:
-        user = data_manager.get(user_id, 'User')
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-        return jsonify(user), 200
-    except Exception as e:
-        logging.exception("Error getting user")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/users/<user_id>', methods=['PUT'])
-def update_user(user_id):
-    try:
-        data = request.get_json()
-        user = data_manager.get(user_id, 'User')
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
-        email = data.get('email')
-        first_name = data.get('first_name')
-        last_name = data.get('last_name')
-        password = data.get('password')  # Add password to the update
-
-        if email and not is_valid_email(email):
-            return jsonify({"error": "Invalid email"}), 400
-        if first_name and not isinstance(first_name, str):
-            return jsonify({"error": "Invalid first name"}), 400
-        if last_name and not isinstance(last_name, str):
-            return jsonify({"error": "Invalid last name"}), 400
-        if password and not isinstance(password, str):  # Validate password
-            return jsonify({"error": "Invalid password"}), 400
-
-        if email and email != user.email:
-            existing_user = next((u for u in data_manager.storage.get('User', {}).values() if u.email == email), None)
-            if existing_user:
-                return jsonify({"error": "Email already exists"}), 409
-
-        if email:
-            user.email = email
-        if first_name:
-            user.first_name = first_name
-        if last_name:
-            user.last_name = last_name
-        if password:  # Update password if provided
-            user.password = password
-        user.updated_at = datetime.now()
-        data_manager.update(user)
-        return jsonify(user), 200
-    except Exception as e:
-        logging.exception("Error updating user")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/users/<user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    try:
-        user = data_manager.get(user_id, 'User')
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
-        data_manager.delete(user_id, 'User')
-        return '', 204
-    except Exception as e:
-        logging.exception("Error deleting user")
-        return jsonify({'error': str(e)}), 500
-
-# Amenity Management Endpoints
+# Amenity endpoints
 @app.route('/amenities', methods=['POST'])
 def create_amenity():
-    try:
-        data = request.get_json()
-        name = data.get('name')
-        description = data.get('description')  # Add description to amenity creation
-
-        if not is_non_empty_string(name) or not is_non_empty_string(description):
-            return jsonify({'error': 'Invalid input data'}), 400
-
-        if any(amenity.name == name for amenity in data_manager.storage.get('Amenity', {}).values()):
-            return jsonify({'error': 'Amenity name already exists'}), 409
-
-        amenity = Amenity(name=name, description=description)  # Include description
-        data_manager.save(amenity)
-        return jsonify(amenity), 201
-    except Exception as e:
-        logging.exception("Error creating amenity")
-        return jsonify({'error': str(e)}), 500
+    """
+    Create a new amenity.
+    """
+    data = request.json
+    amenity = Amenity(id=data['id'], name=data['name'])
+    data_manager.save(amenity)
+    return jsonify(amenity), 201
 
 @app.route('/amenities', methods=['GET'])
 def get_amenities():
-    try:
-        amenities = [amenity for amenity in data_manager.storage.get('Amenity', {}).values()]
-        return jsonify(amenities), 200
-    except Exception as e:
-        logging.exception("Error getting amenities")
-        return jsonify({'error': str(e)}), 500
+    """
+    Retrieve a list of all amenities.
+    """
+    amenities = data_manager.storage.get('Amenity', [])
+    return jsonify(amenities), 200
 
 @app.route('/amenities/<amenity_id>', methods=['GET'])
 def get_amenity(amenity_id):
-    try:
-        amenity = data_manager.get(amenity_id, 'Amenity')
-        if not amenity:
-            return jsonify({'error': 'Amenity not found'}), 404
+    """
+    Retrieve detailed information about a specific amenity.
+    """
+    amenity = data_manager.get(amenity_id, 'Amenity')
+    if amenity:
         return jsonify(amenity), 200
-    except Exception as e:
-        logging.exception("Error getting amenity")
-        return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({"error": "Amenity not found"}), 404
 
 @app.route('/amenities/<amenity_id>', methods=['PUT'])
 def update_amenity(amenity_id):
-    try:
-        data = request.get_json()
-        amenity = data_manager.get(amenity_id, 'Amenity')
-        if not amenity:
-            return jsonify({'error': 'Amenity not found'}), 404
-
-        name = data.get('name')
-        description = data.get('description')  # Add description to the update
-
-        if not is_non_empty_string(name) or not is_non_empty_string(description):
-            return jsonify({'error': 'Invalid input data'}), 400
-
-        if any(a.name == name and a.id != amenity_id for a in data_manager.storage.get('Amenity', {}).values()):
-            return jsonify({'error': 'Amenity name already exists'}), 409
-
-        amenity.name = name
-        amenity.description = description  # Update description
-        amenity.updated_at = datetime.now()
+    """
+    Update an existing amenity's information.
+    """
+    data = request.json
+    amenity = data_manager.get(amenity_id, 'Amenity')
+    if amenity:
+        for key, value in data.items():
+            setattr(amenity, key, value)
         data_manager.update(amenity)
         return jsonify(amenity), 200
-    except Exception as e:
-        logging.exception("Error updating amenity")
-        return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({"error": "Amenity not found"}), 404
 
 @app.route('/amenities/<amenity_id>', methods=['DELETE'])
 def delete_amenity(amenity_id):
+    """
+    Delete a specific amenity.
+    """
     try:
-        amenity = data_manager.get(amenity_id, 'Amenity')
-        if not amenity:
-            return jsonify({'error': 'Amenity not found'}), 404
-
         data_manager.delete(amenity_id, 'Amenity')
         return '', 204
-    except Exception as e:
-        logging.exception("Error deleting amenity")
-        return jsonify({'error': str(e)}), 500
+    except ValueError:
+        return jsonify({"error": "Amenity not found"}), 404
 
-# Review Management Endpoints
+# Place endpoints
+@app.route('/places', methods=['POST'])
+def create_place():
+    """
+    Create a new place.
+    """
+    data = request.json
+    place = Place(id=data['id'], name=data['name'], description=data['description'], city_id=data['city_id'],
+                  host_id=data['host_id'], latitude=data['latitude'], longitude=data['longitude'], 
+                  price_per_night=data['price_per_night'], max_guests=data['max_guests'], 
+                  number_of_rooms=data['number_of_rooms'], number_of_bathrooms=data['number_of_bathrooms'], 
+                  amenity_ids=data['amenity_ids'])
+    data_manager.save(place)
+    return jsonify(place), 201
+
+@app.route('/places', methods=['GET'])
+def get_places():
+    """
+    Retrieve a list of all places.
+    """
+    places = data_manager.storage.get('Place', [])
+    return jsonify(places), 200
+
+@app.route('/places/<place_id>', methods=['GET'])
+def get_place(place_id):
+    """
+    Retrieve detailed information about a specific place.
+    """
+    place = data_manager.get(place_id, 'Place')
+    if place:
+        return jsonify(place), 200
+    else:
+        return jsonify({"error": "Place not found"}), 404
+
+@app.route('/places/<place_id>', methods=['PUT'])
+def update_place(place_id):
+    """
+    Update an existing place's information.
+    """
+    data = request.json
+    place = data_manager.get(place_id, 'Place')
+    if place:
+        for key, value in data.items():
+            setattr(place, key, value)
+        data_manager.update(place)
+        return jsonify(place), 200
+    else:
+        return jsonify({"error": "Place not found"}), 404
+
+@app.route('/places/<place_id>', methods=['DELETE'])
+def delete_place(place_id):
+    """
+    Delete a specific place.
+    """
+    try:
+        data_manager.delete(place_id, 'Place')
+        return '', 204
+    except ValueError:
+        return jsonify({"error": "Place not found"}), 404
+
+# User endpoints
+@app.route('/users', methods=['POST'])
+def create_user():
+    """
+    Create a new user.
+    """
+    data = request.json
+    user = User(id=data['id'], email=data['email'], first_name=data['first_name'], last_name=data['last_name'])
+    data_manager.save(user)
+    return jsonify(user), 201
+
+@app.route('/users', methods=['GET'])
+def get_users():
+    """
+    Retrieve a list of all users.
+    """
+    users = data_manager.storage.get('User', [])
+    return jsonify(users), 200
+
+@app.route('/users/<user_id>', methods=['GET'])
+def get_user(user_id):
+    """
+    Retrieve detailed information about a specific user.
+    """
+    user = data_manager.get(user_id, 'User')
+    if user:
+        return jsonify(user), 200
+    else:
+        return jsonify({"error": "User not found"}), 404
+
+@app.route('/users/<user_id>', methods=['PUT'])
+def update_user(user_id):
+    """
+    Update an existing user's information.
+    """
+    data = request.json
+    user = data_manager.get(user_id, 'User')
+    if user:
+        for key, value in data.items():
+            setattr(user, key, value)
+        data_manager.update(user)
+        return jsonify(user), 200
+    else:
+        return jsonify({"error": "User not found"}), 404
+
+@app.route('/users/<user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    """
+    Delete a specific user.
+    """
+    try:
+        data_manager.delete(user_id, 'User')
+        return '', 204
+    except ValueError:
+        return jsonify({"error": "User not found"}), 404
+
+# Review endpoints
 @app.route('/places/<place_id>/reviews', methods=['POST'])
 def create_review(place_id):
-    try:
-        data = request.get_json()
-        user_id = data.get('user_id')
-        rating = data.get('rating')
-        comment = data.get('comment')
-
-        place = data_manager.get(place_id, 'Place')
-        user = data_manager.get(user_id, 'User')
-
-        if not (place and user):
-            return jsonify({'error': 'Invalid place or user ID'}), 400
-
-        if user_id == place.host.id:
-            return jsonify({'error': 'Hosts cannot review their own places'}), 400
-
-        if not is_valid_rating(rating):
-            return jsonify({'error': 'Rating must be an integer between 1 and 5'}), 400
-
-        review = Review(place=place, user=user, rating=rating, comment=comment)
-        data_manager.save(review)
-        return jsonify(review), 201
-    except Exception as e:
-        logging.exception("Error creating review")
-        return jsonify({'error': str(e)}), 500
+    """
+    Create a new review for a specified place.
+    """
+    data = request.json
+    review = Review(id=data['id'], user_id=data['user_id'], place_id=place_id, rating=data['rating'], comment=data['comment'])
+    data_manager.save(review)
+    return jsonify(review), 201
 
 @app.route('/users/<user_id>/reviews', methods=['GET'])
 def get_reviews_by_user(user_id):
-    try:
-        user = data_manager.get(user_id, 'User')
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-        reviews = [review for review in data_manager.storage.get('Review', {}).values() if review.user.id == user_id]
-        return jsonify(reviews), 200
-    except Exception as e:
-        logging.exception("Error getting reviews by user")
-        return jsonify({'error': str(e)}), 500
+    """
+    Retrieve all reviews written by a specific user.
+    """
+    reviews = [review for review in data_manager.storage.get('Review', {}).values() if review.user_id == user_id]
+    return jsonify(reviews), 200
 
 @app.route('/places/<place_id>/reviews', methods=['GET'])
 def get_reviews_by_place(place_id):
-    try:
-        place = data_manager.get(place_id, 'Place')
-        if not place:
-            return jsonify({'error': 'Place not found'}), 404
-        reviews = [review for review in data_manager.storage.get('Review', {}).values() if review.place.id == place_id]
-        return jsonify(reviews), 200
-    except Exception as e:
-        logging.exception("Error getting reviews by place")
-        return jsonify({'error': str(e)}), 500
+    """
+    Retrieve all reviews for a specific place.
+    """
+    reviews = [review for review in data_manager.storage.get('Review', {}).values() if review.place_id == place_id]
+    return jsonify(reviews), 200
 
 @app.route('/reviews/<review_id>', methods=['GET'])
 def get_review(review_id):
-    try:
-        review = data_manager.get(review_id, 'Review')
-        if not review:
-            return jsonify({'error': 'Review not found'}), 404
+    """
+    Retrieve detailed information about a specific review.
+    """
+    review = data_manager.get(review_id, 'Review')
+    if review:
         return jsonify(review), 200
-    except Exception as e:
-        logging.exception("Error getting review")
-        return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({"error": "Review not found"}), 404
 
 @app.route('/reviews/<review_id>', methods=['PUT'])
 def update_review(review_id):
-    try:
-        data = request.get_json()
-        review = data_manager.get(review_id, 'Review')
-        if not review:
-            return jsonify({'error': 'Review not found'}), 404
-
-        rating = data.get('rating')
-        comment = data.get('comment')
-
-        if not is_valid_rating(rating):
-            return jsonify({'error': 'Rating must be an integer between 1 and 5'}), 400
-
-        review.rating = rating
-        review.comment = comment
-        review.updated_at = datetime.now()
+    """
+    Update an existing review.
+    """
+    data = request.json
+    review = data_manager.get(review_id, 'Review')
+    if review:
+        for key, value in data.items():
+            setattr(review, key, value)
         data_manager.update(review)
         return jsonify(review), 200
-    except Exception as e:
-        logging.exception("Error updating review")
-        return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({"error": "Review not found"}), 404
 
 @app.route('/reviews/<review_id>', methods=['DELETE'])
 def delete_review(review_id):
+    """
+    Delete a specific review.
+    """
     try:
-        review = data_manager.get(review_id, 'Review')
-        if not review:
-            return jsonify({'error': 'Review not found'}), 404
-
         data_manager.delete(review_id, 'Review')
         return '', 204
-    except Exception as e:
-        logging.exception("Error deleting review")
-        return jsonify({'error': str(e)}), 500
+    except ValueError:
+        return jsonify({"error": "Review not found"}), 404
 
 if __name__ == "__main__":
     app.run(debug=True)
