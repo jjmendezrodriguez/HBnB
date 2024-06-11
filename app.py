@@ -105,6 +105,108 @@ def delete_city(city_id):
     data_manager.delete(city_id, 'City')
     return '', 204
 
+# Places Management Endpoints
+
+def is_valid_latitude(lat):
+    return isinstance(lat, (int, float)) and -90 <= lat <= 90
+
+def is_valid_longitude(lon):
+    return isinstance(lon, (int, float)) and -180 <= lon <= 180
+
+def is_non_negative_integer(value):
+    return isinstance(value, int) and value >= 0
+
+def validate_place_data(data):
+    required_fields = ["name", "description", "address", "city_id", "latitude", "longitude", "host_id", "number_of_rooms", "number_of_bathrooms", "price_per_night", "max_guests", "amenity_ids"]
+    if not all(field in data for field in required_fields):
+        return False
+
+    if not is_non_negative_integer(data["number_of_rooms"]) or not is_non_negative_integer(data["number_of_bathrooms"]) or not is_non_negative_integer(data["max_guests"]):
+        return False
+
+    if not is_valid_latitude(data["latitude"]) or not is_valid_longitude(data["longitude"]):
+        return False
+
+    return True
+
+@app.route('/places', methods=['POST'])
+def create_place():
+    data = request.get_json()
+
+    if not validate_place_data(data):
+        return jsonify({'error': 'Invalid input data'}), 400
+
+    if not data_manager.get(data['city_id'], 'City'):
+        return jsonify({'error': 'City not found'}), 404
+   
+# Check if amenity IDs exist in the database
+    for amenity_id in data['amenity_ids']:
+        if not data_manager.get(amenity_id, 'Amenity'):
+            return jsonify({'error': f'Amenity ID {amenity_id} not found'}), 404
+
+    place = Place(**data)
+    data_manager.save(place)
+    return jsonify(place.__dict__), 201
+
+@app.route('/places', methods=['GET'])
+def get_places():
+    places = [place.__dict__ for place in data_manager.storage.get('Place', {}).values()]
+    for place in places:
+        city = data_manager.get(place['city_id'], 'City')
+        if city:
+            place['city'] = city.__dict__
+        amenities = [data_manager.get(aid, 'Amenity').__dict__ for aid in place['amenity_ids']]
+        place['amenities'] = amenities
+    return jsonify(places), 200
+
+@app.route('/places/<place_id>', methods=['GET'])
+def get_place(place_id):
+    place = data_manager.get(place_id, 'Place')
+    if not place:
+        return jsonify({'error': 'Place not found'}), 404
+
+    place_data = place.__dict__.copy()
+    city = data_manager.get(place.city_id, 'City')
+    if city:
+        place_data['city'] = city.__dict__
+    amenities = [data_manager.get(aid, 'Amenity').__dict__ for aid in place.amenity_ids]
+    place_data['amenities'] = amenities
+
+    return jsonify(place_data), 200
+
+@app.route('/places/<place_id>', methods=['PUT'])
+def update_place(place_id):
+    data = request.get_json()
+    place = data_manager.get(place_id, 'Place')
+    if not place:
+        return jsonify({'error': 'Place not found'}), 404
+
+    if not validate_place_data(data):
+        return jsonify({'error': 'Invalid input data'}), 400
+
+    if not data_manager.get(data['city_id'], 'City'):
+        return jsonify({'error': 'City not found'}), 404
+
+    for amenity_id in data['amenity_ids']:
+        if not data_manager.get(amenity_id, 'Amenity'):
+            return jsonify({'error': f'Amenity ID {amenity_id} not found'}), 404
+
+    for key, value in data.items():
+        setattr(place, key, value)
+    place.updated_at = datetime.now()
+    data_manager.update(place)
+
+    return jsonify(place.__dict__), 200
+
+@app.route('/places/<place_id>', methods=['DELETE'])
+def delete_place(place_id):
+    place = data_manager.get(place_id, 'Place')
+    if not place:
+        return jsonify({'error': 'Place not found'}), 404
+
+    data_manager.delete(place_id, 'Place')
+    return '', 204    
+
 # User Management Endpoints
 users = {}
 user_id_counter = 1
