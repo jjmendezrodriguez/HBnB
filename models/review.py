@@ -15,7 +15,7 @@ class Review:
         updated_at (datetime): Timestamp when the review was last updated.
     """
     
-    def __init__(self, user_id, place_id, rating, comment):
+    def __init__(self, user_id, place_id, rating, comment, id=None):
         """
         Initializes a new Review instance.
 
@@ -24,8 +24,9 @@ class Review:
             place_id (str): Identifier for the place being reviewed.
             rating (int): Rating given to the place.
             comment (str): Comment about the place.
+            id (str, optional): Unique identifier for the review. If not provided, a new UUID will be generated.
         """
-        self.id = str(uuid.uuid4())  # Generate a unique ID for the review
+        self.id = id or str(uuid.uuid4())  # Generate a unique ID for the review if not provided
         self.user_id = user_id  # Set the user ID who wrote the review
         self.place_id = place_id  # Set the place ID being reviewed
         self.rating = rating  # Set the rating given to the place

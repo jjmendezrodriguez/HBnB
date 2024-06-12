@@ -26,7 +26,7 @@ class DataManager(IPersistenceManager):
                 # Ensure all values are lists
                 for key in self.storage:
                     if not isinstance(self.storage[key], list):
-                        self.storage[key] = []
+                        self.storage[key] = []  # Correct any dict values to be lists
         except FileNotFoundError:
             self.storage = {}  # If the file is not found, initialize an empty storage dictionary
 
@@ -62,6 +62,8 @@ class DataManager(IPersistenceManager):
             object: The retrieved entity or None if not found.
         """
         entities = self.storage.get(entity_type, [])  # Get the list of entities of the given type
+        if entities is None:
+            return None
         for entity in entities:
             if entity['id'] == entity_id:
                 return entity  # Return the entity if the ID matches

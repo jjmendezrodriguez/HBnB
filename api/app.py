@@ -110,11 +110,18 @@ def create_city():
     """
     Create a new city.
     """
-    data = request.json
-    city = City(id=data['id'], name=data['name'], country_code=data['country_code'])
-    data_manager.save(city)
-    return jsonify(city), 201
-
+    try:
+        data = request.json
+        logging.debug(f"Received data: {data}")
+        city = City(name=data['name'], country_code=data['country_code'])
+        data_manager.save(city)
+        response = jsonify(city.__dict__), 201  # Return the city as JSON
+        logging.debug(f"Created city: {city.__dict__}")
+        return response
+    except Exception as e:
+        logging.error(f"Error creating city: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
+    
 @app.route('/cities', methods=['GET'])
 def get_cities():
     """
@@ -132,7 +139,29 @@ def get_city(city_id):
     if city:
         return jsonify(city), 200
     else:
+        logging.debug(f"City with ID {city_id} not found.")
         return jsonify({"error": "City not found"}), 404
+
+def get(self, entity_id, entity_type):
+    """
+    Retrieve an entity from the storage.
+
+    Args:
+        entity_id (str): The ID of the entity to retrieve.
+        entity_type (str): The type of the entity to retrieve.
+
+    Returns:
+        object: The retrieved entity or None if not found.
+    """
+    entities = self.storage.get(entity_type, [])  # Get the list of entities of the given type
+    if entities is None:
+        logging.debug(f"No entities found for type {entity_type}.")
+        return None
+    for entity in entities:
+        if entity['id'] == entity_id:
+            return entity  # Return the entity if the ID matches
+    logging.debug(f"Entity of type {entity_type} with ID {entity_id} not found.")
+    return None  # Return None if the entity is not found
 
 @app.route('/cities/<city_id>', methods=['PUT'])
 def update_city(city_id):
@@ -166,10 +195,17 @@ def create_amenity():
     """
     Create a new amenity.
     """
-    data = request.json
-    amenity = Amenity(id=data['id'], name=data['name'])
-    data_manager.save(amenity)
-    return jsonify(amenity), 201
+    try:
+        data = request.json
+        logging.debug(f"Received data: {data}")
+        amenity = Amenity(name=data['name'], description=data.get('description', ''))
+        data_manager.save(amenity)
+        response = jsonify(amenity.__dict__), 201  # Return the amenity as JSON
+        logging.debug(f"Created amenity: {amenity.__dict__}")
+        return response
+    except Exception as e:
+        logging.error(f"Error creating amenity: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/amenities', methods=['GET'])
 def get_amenities():
@@ -222,14 +258,39 @@ def create_place():
     """
     Create a new place.
     """
-    data = request.json
-    place = Place(id=data['id'], name=data['name'], description=data['description'], city_id=data['city_id'],
-                  host_id=data['host_id'], latitude=data['latitude'], longitude=data['longitude'], 
-                  price_per_night=data['price_per_night'], max_guests=data['max_guests'], 
-                  number_of_rooms=data['number_of_rooms'], number_of_bathrooms=data['number_of_bathrooms'], 
-                  amenity_ids=data['amenity_ids'])
-    data_manager.save(place)
-    return jsonify(place), 201
+    try:
+        data = request.json
+        logging.debug(f"Received data: {data}")
+        
+        # Check for required fields
+        required_fields = ['name', 'description', 'city_id', 'host_id', 'latitude', 'longitude', 'price_per_night', 'max_guests', 'number_of_rooms', 'number_of_bathrooms']
+        for field in required_fields:
+            if field not in data:
+                raise KeyError(f"Missing required field: {field}")
+
+        place = Place(
+            name=data['name'], 
+            description=data['description'], 
+            city_id=data['city_id'], 
+            host_id=data['host_id'], 
+            latitude=data['latitude'], 
+            longitude=data['longitude'], 
+            price_per_night=data['price_per_night'], 
+            max_guests=data['max_guests'], 
+            number_of_rooms=data['number_of_rooms'], 
+            number_of_bathrooms=data['number_of_bathrooms'], 
+            amenity_ids=data.get('amenity_ids', [])
+        )
+        data_manager.save(place)
+        response = jsonify(place.__dict__), 201  # Return the place as JSON
+        logging.debug(f"Created place: {place.__dict__}")
+        return response
+    except KeyError as e:
+        logging.error(f"Error creating place: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.error(f"Error creating place: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/places', methods=['GET'])
 def get_places():
@@ -282,10 +343,32 @@ def create_user():
     """
     Create a new user.
     """
-    data = request.json
-    user = User(id=data['id'], email=data['email'], first_name=data['first_name'], last_name=data['last_name'])
-    data_manager.save(user)
-    return jsonify(user), 201
+    try:
+        data = request.json
+        logging.debug(f"Received data: {data}")
+
+        # Check for required fields
+        required_fields = ['email', 'password', 'first_name', 'last_name']
+        for field in required_fields:
+            if field not in data:
+                raise KeyError(f"Missing required field: {field}")
+
+        user = User(
+            email=data['email'],
+            password=data['password'],
+            first_name=data['first_name'],
+            last_name=data['last_name']
+        )
+        data_manager.save(user)
+        response = jsonify(user.__dict__), 201  # Return the user as JSON
+        logging.debug(f"Created user: {user.__dict__}")
+        return response
+    except KeyError as e:
+        logging.error(f"Error creating user: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logging.error(f"Error creating user: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/users', methods=['GET'])
 def get_users():
@@ -338,26 +421,46 @@ def create_review(place_id):
     """
     Create a new review for a specified place.
     """
-    data = request.json
-    review = Review(id=data['id'], user_id=data['user_id'], place_id=place_id, rating=data['rating'], comment=data['comment'])
-    data_manager.save(review)
-    return jsonify(review), 201
+    try:
+        data = request.json
+        logging.debug(f"Received data: {data}")
+        review = Review(
+            user_id=data['user_id'], 
+            place_id=place_id, 
+            rating=data['rating'], 
+            comment=data['comment']
+        )
+        data_manager.save(review)
+        response = jsonify(review.__dict__), 201  # Return the review as JSON
+        logging.debug(f"Created review: {review.__dict__}")
+        return response
+    except Exception as e:
+        logging.error(f"Error creating review: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/users/<user_id>/reviews', methods=['GET'])
 def get_reviews_by_user(user_id):
     """
     Retrieve all reviews written by a specific user.
     """
-    reviews = [review for review in data_manager.storage.get('Review', {}).values() if review.user_id == user_id]
-    return jsonify(reviews), 200
+    try:
+        reviews = [review for review in data_manager.storage.get('Review', []) if review['user_id'] == user_id]
+        return jsonify(reviews), 200
+    except Exception as e:
+        logging.error(f"Error retrieving reviews for user {user_id}: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/places/<place_id>/reviews', methods=['GET'])
 def get_reviews_by_place(place_id):
     """
     Retrieve all reviews for a specific place.
     """
-    reviews = [review for review in data_manager.storage.get('Review', {}).values() if review.place_id == place_id]
-    return jsonify(reviews), 200
+    try:
+        reviews = [review for review in data_manager.storage.get('Review', []) if review['place_id'] == place_id]
+        return jsonify(reviews), 200
+    except Exception as e:
+        logging.error(f"Error retrieving reviews for place {place_id}: {e}")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 @app.route('/reviews/<review_id>', methods=['GET'])
 def get_review(review_id):

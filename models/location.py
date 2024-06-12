@@ -39,15 +39,16 @@ class City:
         updated_at (datetime): Timestamp when the city was last updated.
     """
     
-    def __init__(self, name, country_code):
+    def __init__(self, name, country_code, id=None):
         """
         Initializes a new City instance.
 
         Args:
             name (str): Name of the city.
             country_code (str): ISO code of the country the city belongs to.
+            id (str, optional): Unique identifier for the city. If not provided, a new UUID will be generated.
         """
-        self.id = str(uuid.uuid4())  # Generate a unique ID for the city
+        self.id = id or str(uuid.uuid4())  # Generate a unique ID for the city if not provided
         self.name = name  # Set the name of the city
         self.country_code = country_code  # Set the country code of the city
         self.created_at = datetime.now()  # Set the creation timestamp

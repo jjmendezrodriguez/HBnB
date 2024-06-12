@@ -22,7 +22,7 @@ class Place:
         updated_at (datetime): Timestamp when the place was last updated.
     """
     
-    def __init__(self, name, description, city_id, host_id, latitude, longitude, price_per_night, max_guests, number_of_rooms, number_of_bathrooms, amenity_ids):
+    def __init__(self, name, description, city_id, host_id, latitude, longitude, price_per_night, max_guests, number_of_rooms, number_of_bathrooms, amenity_ids, id=None):
         """
         Initializes a new Place instance.
 
@@ -38,8 +38,9 @@ class Place:
             number_of_rooms (int): Number of rooms in the place.
             number_of_bathrooms (int): Number of bathrooms in the place.
             amenity_ids (list): List of amenity identifiers associated with the place.
+            id (str, optional): Unique identifier for the place. If not provided, a new UUID will be generated.
         """
-        self.id = str(uuid.uuid4())  # Generate a unique ID for the place
+        self.id = id or str(uuid.uuid4())  # Generate a unique ID for the place if not provided
         self.name = name  # Set the name of the place
         self.description = description  # Set the description of the place
         self.city_id = city_id  # Set the city ID where the place is located
