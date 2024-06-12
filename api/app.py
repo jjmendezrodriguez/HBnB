@@ -121,7 +121,7 @@ def create_city():
     except Exception as e:
         logging.error(f"Error creating city: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
-    
+
 @app.route('/cities', methods=['GET'])
 def get_cities():
     """
@@ -261,7 +261,7 @@ def create_place():
     try:
         data = request.json
         logging.debug(f"Received data: {data}")
-        
+
         # Check for required fields
         required_fields = ['name', 'description', 'city_id', 'host_id', 'latitude', 'longitude', 'price_per_night', 'max_guests', 'number_of_rooms', 'number_of_bathrooms']
         for field in required_fields:
@@ -269,16 +269,16 @@ def create_place():
                 raise KeyError(f"Missing required field: {field}")
 
         place = Place(
-            name=data['name'], 
-            description=data['description'], 
-            city_id=data['city_id'], 
-            host_id=data['host_id'], 
-            latitude=data['latitude'], 
-            longitude=data['longitude'], 
-            price_per_night=data['price_per_night'], 
-            max_guests=data['max_guests'], 
-            number_of_rooms=data['number_of_rooms'], 
-            number_of_bathrooms=data['number_of_bathrooms'], 
+            name=data['name'],
+            description=data['description'],
+            city_id=data['city_id'],
+            host_id=data['host_id'],
+            latitude=data['latitude'],
+            longitude=data['longitude'],
+            price_per_night=data['price_per_night'],
+            max_guests=data['max_guests'],
+            number_of_rooms=data['number_of_rooms'],
+            number_of_bathrooms=data['number_of_bathrooms'],
             amenity_ids=data.get('amenity_ids', [])
         )
         data_manager.save(place)
@@ -425,9 +425,9 @@ def create_review(place_id):
         data = request.json
         logging.debug(f"Received data: {data}")
         review = Review(
-            user_id=data['user_id'], 
-            place_id=place_id, 
-            rating=data['rating'], 
+            user_id=data['user_id'],
+            place_id=place_id,
+            rating=data['rating'],
             comment=data['comment']
         )
         data_manager.save(review)
