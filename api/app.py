@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_restx import Api, Resource, fields
 from persistence import IPersistenceManager, DataManager, FileStorage
 from models import Amenity, Country, City, Place, Review, User
 from datetime import datetime
@@ -8,8 +9,9 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Initialize Flask app
+# Initialize Flask app and Flask-Restx Api
 app = Flask(__name__)
+api = Api(app, version='1.0', title='My API', description='A simple demonstration API')
 
 # Initialize DataManager for persistence
 data_manager = DataManager()
@@ -25,6 +27,55 @@ preloaded_countries = [
 # Save pre-loaded countries to data manager
 for country in preloaded_countries:
     data_manager.save(country)
+
+# Define Models for documentation
+country_model = api.model('Country', {
+    'name': fields.String(required=True, description='The country name'),
+    'code': fields.String(required=True, description='The country code')
+})
+
+city_model = api.model('City', {
+    'id': fields.String(readOnly=True, description='The city unique identifier'),
+    'name': fields.String(required=True, description='The city name'),
+    'country_code': fields.String(required=True, description='The country code of the city')
+})
+
+amenity_model = api.model('Amenity', {
+    'id': fields.String(readOnly=True, description='The amenity unique identifier'),
+    'name': fields.String(required=True, description='The amenity name'),
+    'description': fields.String(description='The amenity description')
+})
+
+user_model = api.model('User', {
+    'id': fields.String(readOnly=True, description='The user unique identifier'),
+    'email': fields.String(required=True, description='The user email'),
+    'first_name': fields.String(required=True, description='The user first name'),
+    'last_name': fields.String(required=True, description='The user last name'),
+    'password': fields.String(required=True, description='The user password')
+})
+
+review_model = api.model('Review', {
+    'id': fields.String(readOnly=True, description='The review unique identifier'),
+    'place_id': fields.String(required=True, description='The place ID the review is for'),
+    'user_id': fields.String(required=True, description='The user ID who wrote the review'),
+    'rating': fields.Integer(required=True, description='The rating given by the user'),
+    'comment': fields.String(description='The review comment')
+})
+
+place_model = api.model('Place', {
+    'id': fields.String(readOnly=True, description='The place unique identifier'),
+    'name': fields.String(required=True, description='The place name'),
+    'description': fields.String(required=True, description='The place description'),
+    'city_id': fields.String(required=True, description='The city ID where the place is located'),
+    'host_id': fields.String(required=True, description='The host ID of the place'),
+    'latitude': fields.Float(required=True, description='The latitude of the place'),
+    'longitude': fields.Float(required=True, description='The longitude of the place'),
+    'price_per_night': fields.Float(required=True, description='The price per night of the place'),
+    'max_guests': fields.Integer(required=True, description='The maximum number of guests the place can accommodate'),
+    'number_of_rooms': fields.Integer(required=True, description='The number of rooms in the place'),
+    'number_of_bathrooms': fields.Integer(required=True, description='The number of bathrooms in the place'),
+    'amenity_ids': fields.List(fields.String, description='The list of amenity IDs associated with the place')
+})
 
 # Utility functions
 def is_valid_country_code(code):
@@ -71,6 +122,111 @@ class CustomJSONEncoder():
         return super().default(obj)
 
 app.json_encoder = CustomJSONEncoder
+
+# Define Namespaces
+ns_country = api.namespace('countries', description='Country operations')
+ns_city = api.namespace('cities', description='City operations')
+ns_amenity = api.namespace('amenities', description='Amenity operations')
+ns_user = api.namespace('users', description='User operations')
+ns_place = api.namespace('places', description='Place operations')
+ns_review = api.namespace('reviews', description='Review operations')
+
+# Country Endpoints
+@ns_country.route('/')
+class CountryList(Resource):
+    @ns_country.doc('list_countries')
+    @ns_country.marshal_list_with(country_model)
+    def get(self):
+        """Retrieve all pre-loaded countries."""
+        countries = data_manager.storage.get('Country', [])
+        return countries, 200
+
+@ns_country.route('/<string:country_code>')
+@ns_country.response(404, 'Country not found')
+@ns_country.param('country_code', 'The country code')
+class Country(Resource):
+    @ns_country.doc('get_country')
+    @ns_country.marshal_with(country_model)
+    def get(self, country_code):
+        """Retrieve details of a specific country by its code."""
+        country = data_manager.get(country_code, 'Country')
+        if country:
+            return country, 200
+        else:
+            api.abort(404, "Country not found")
+
+@ns_country.route('/<string:country_code>/cities')
+@ns_country.response(404, 'Country not found')
+@ns_country.param('country_code', 'The country code')
+class CountryCities(Resource):
+    @ns_country.doc('get_cities_by_country')
+    @ns_country.marshal_list_with(city_model)
+    def get(self, country_code):
+        """Retrieve all cities belonging to a specific country."""
+        country = data_manager.get(country_code, 'Country')
+        if country:
+            cities = [city for city in data_manager.storage.get('City', []) if city['country_code'] == country_code]
+            return cities, 200
+        else:
+            api.abort(404, "Country not found")
+
+# City Endpoints
+@ns_city.route('/')
+class CityList(Resource):
+    @ns_city.doc('list_cities')
+    @ns_city.marshal_list_with(city_model)
+    def get(self):
+        """Retrieve all cities."""
+        cities = data_manager.storage.get('City', [])
+        return cities, 200
+
+    @ns_city.doc('create_city')
+    @ns_city.expect(city_model)
+    @ns_city.marshal_with(city_model, code=201)
+    def post(self):
+        """Create a new city."""
+        data = request.json
+        city = City(name=data['name'], country_code=data['country_code'])
+        data_manager.save(city)
+        return city, 201
+
+@ns_city.route('/<string:city_id>')
+@ns_city.response(404, 'City not found')
+@ns_city.param('city_id', 'The city unique identifier')
+class City(Resource):
+    @ns_city.doc('get_city')
+    @ns_city.marshal_with(city_model)
+    def get(self, city_id):
+        """Retrieve details of a specific city."""
+        city = data_manager.get(city_id, 'City')
+        if city:
+            return city, 200
+        else:
+            api.abort(404, "City not found")
+
+    @ns_city.doc('update_city')
+    @ns_city.expect(city_model)
+    @ns_city.marshal_with(city_model)
+    def put(self, city_id):
+        """Update an existing city's information."""
+        data = request.json
+        city = data_manager.get(city_id, 'City')
+        if city:
+            for key, value in data.items():
+                setattr(city, key, value)
+            data_manager.update(city)
+            return city, 200
+        else:
+            api.abort(404, "City not found")
+
+    @ns_city.doc('delete_city')
+    def delete(self, city_id):
+        """Delete a specific city."""
+        try:
+            data_manager.delete(city_id, 'City')
+            return '', 204
+        except ValueError:
+            api.abort(404, "City not found")
 
 # Country and City Endpoints
 @app.route('/countries', methods=['GET'])
